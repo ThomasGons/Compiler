@@ -8,13 +8,14 @@
 
 // set of tokens in C language
 typedef enum {
-    tk_EOI, tk_Mul, tk_Div, tk_Mod, tk_Add, tk_Sub,
-    tk_LBrc, tk_RBrc, tk_LPrt, tk_RPrt, tk_Semi, tk_Comma,
-} token_type;
+    tk_EOI,
+    tk_Mul, tk_Div, tk_Mod, tk_Add, tk_Sub,                // operators 
+    tk_LBrc, tk_RBrc, tk_LPrt, tk_RPrt, tk_Semi, tk_Comma, // separators
+} token_val;
 
 // struct for each token
 typedef struct {
-    token_type tok;
+    token_val tok;
     int err_l, err_c; // line and column of error
     union {
         int value;
@@ -22,7 +23,7 @@ typedef struct {
     };
 } token;
 
-token gettok();
 void next_char();
+token gettok();
 
 #endif
