@@ -7,6 +7,11 @@
 #include <error.h>
 #include <ctype.h>
 
+
+typedef enum {
+    false, true
+} bool;
+
 // set of tokens in C language
 typedef enum {
     tk_EOI,
@@ -19,15 +24,15 @@ typedef enum {
     // separators
     tk_LBrc, tk_RBrc, tk_LBrk, tk_RBrk,
     tk_LPrt, tk_RPrt, tk_Semi, tk_Comma,
-    tk_Dot, tk_Colon,tk_Hash,
+    tk_Dot, tk_Colon, tk_Hash,
     
     // keywords
     tk_Return, tk_Type,
 
     // identifiers
-    tk_Idnt,
+    tk_Idnt, tk_Keyw,
 
-    tk_Lit_Expr,tk_Com
+    tk_Lit_Expr
 } token_val;
 
 // struct for each token
@@ -40,11 +45,13 @@ typedef struct {
     };
 } token;
 
+
 void next_char();
 token following_char(char, token_val, token_val);
 token ident_keyword();
+bool is_keyword(char*);
 token lit_expr(token_val, char);
-token div_com();
+bool is_div();
 token gettok();
 void error_token(char);
 
