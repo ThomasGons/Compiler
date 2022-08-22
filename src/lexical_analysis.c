@@ -29,13 +29,16 @@ token following_char(char expected_char, token_val tk_True, token_val tk_False) 
     next_char();
     if (expected_char == current_char) {
         next_char();
-        return (token) {tk_True, line, column, {0}};
+        return (token) {tk_True, line, column, NULL};
     }
     else {
         // return an error for char that should not be alone
-        if ((int) tk_False == -1)
-            error_token(prev_char);
-        return (token) {tk_False, line, column, {0}};
+        if ((int) tk_False == -1) {
+            printf("error: unexpected character: %c, line %d, column %d\n",
+                prev_char, line, --column);
+            exit(-1);
+        }
+        return (token) {tk_False, line, column, NULL};
     }
 }
 
@@ -53,7 +56,7 @@ token ident_keyword() {
     }
     is_keyword(str);
     token_val keyw_ident = is_keyword(str) ? tk_Keyw : tk_Idnt;
-    return (token) {keyw_ident, err_l, err_c, {.text=str}};
+    return (token) {keyw_ident, err_l, err_c, (char*) str};
 }
 
 // change token value if it's an keyword
@@ -72,13 +75,17 @@ token lit_expr(token_val tk_val, char delim) {
     char *str = malloc(sizeof(char));
     // continue while the delim has not been encountered or if current char is not EOF
     while (delim != current_char) {
-        if (current_char == EOF) error(line, column, "missing terminated character \"");
+        if (current_char == EOF) {
+            printf("missing terminated character %c, line: %d, column: %d\n",
+             delim, line, column);
+            exit(-1);
+        }
         strcat(str, (char*) &current_char);
         err_l = line; err_c = column;
         next_char();
     }
     next_char();
-    return (token) {tk_val, err_l, err_c, {.text=str}};
+    return (token) {tk_val, err_l, err_c, (char*) str};
 }
 
 
@@ -110,41 +117,34 @@ token gettok() {
         next_char();
     int err_l = line, err_c = column;
     switch (current_char) {
-        case '*': next_char(); return (token) {tk_Mul, err_l, err_c, {0}};
-        case '/': next_char(); if (is_div()) return (token) {tk_Div, err_l, err_c, {0}}; break;
-        case '%': next_char(); return (token) {tk_Mod, err_l, err_c, {0}};
-        case '+': next_char(); return (token) {tk_Add, err_l, err_c, {0}};
-        case '-': next_char(); return (token) {tk_Sub, err_l, err_c, {0}};
+        case '*': next_char(); return (token) {tk_Mul, err_l, err_c, NULL};
+        case '/': next_char(); if (is_div()) return (token) {tk_Div, err_l, err_c, NULL}; break;
+        case '%': next_char(); return (token) {tk_Mod, err_l, err_c, NULL};
+        case '+': next_char(); return (token) {tk_Add, err_l, err_c, NULL};
+        case '-': next_char(); return (token) {tk_Sub, err_l, err_c, NULL};
         case '<': return following_char('=', tk_Le, tk_Lt);
-        case '=': next_char(); return (token) {tk_Eq, err_l, err_c, {0}};
+        case '=': next_char(); return (token) {tk_Eq, err_l, err_c, NULL};
         case '>': return following_char('=', tk_Ge, tk_Gt);
         case '!': return following_char('=', tk_Neq, tk_Not);
         case '&': return following_char('&', tk_And, tk_Addr); // Not undefined but can be bitwise op or pointer adress
         case '|': return following_char('|', tk_Or, -1);  // Not undefined but can be bitwise op 
-        case '{': next_char(); return (token) {tk_LBrc, err_l, err_c, {0}};
-        case '}': next_char(); return (token) {tk_RBrc, err_l, err_c, {0}};
-        case '[': next_char(); return (token) {tk_LBrk, err_l, err_c, {0}};
-        case ']': next_char(); return (token) {tk_RBrk, err_l, err_c, {0}};
-        case '(': next_char(); return (token) {tk_LPrt, err_l, err_c, {0}};
-        case ')': next_char(); return (token) {tk_RPrt, err_l, err_c, {0}};
-        case ';': next_char(); return (token) {tk_Semi, err_l, err_c, {0}};
-        case ',': next_char(); return (token) {tk_Comma, err_l, err_c, {0}};
-        case '.': next_char(); return (token) {tk_Dot, err_l, err_c, {0}};
-        case ':': next_char(); return (token) {tk_Colon, err_l, err_c, {0}};
-        case '#': next_char(); return (token) {tk_Hash, err_l, err_c, {0}};
+        case '{': next_char(); return (token) {tk_LBrc, err_l, err_c, NULL};
+        case '}': next_char(); return (token) {tk_RBrc, err_l, err_c, NULL};
+        case '[': next_char(); return (token) {tk_LBrk, err_l, err_c, NULL};
+        case ']': next_char(); return (token) {tk_RBrk, err_l, err_c, NULL};
+        case '(': next_char(); return (token) {tk_LPrt, err_l, err_c, NULL};
+        case ')': next_char(); return (token) {tk_RPrt, err_l, err_c, NULL};
+        case ';': next_char(); return (token) {tk_Semi, err_l, err_c, NULL};
+        case ',': next_char(); return (token) {tk_Comma, err_l, err_c, NULL};
+        case '.': next_char(); return (token) {tk_Dot, err_l, err_c, NULL};
+        case ':': next_char(); return (token) {tk_Colon, err_l, err_c, NULL};
+        case '#': next_char(); return (token) {tk_Hash, err_l, err_c, NULL};
         case '"': next_char(); return lit_expr(tk_Lit_Expr,'\"');
         case '\'': next_char(); return lit_expr(tk_Lit_Expr, '\'');
         default: return ident_keyword();
-        case EOF: return (token) {tk_EOI, err_l, err_c, {0}};
+        case EOF: return (token) {tk_EOI, err_l, err_c, NULL};
     }
     gettok(); // recursive call for comments that are ignored
-}
-
-// error handling
-void error_token(char prev_char) {
-    printf("error: unexpected character: %c, line %d, column %d\n",
-     prev_char, line, --column);
-    exit(-1);
 }
 
 int main (int argc, char **argv) {
@@ -165,7 +165,6 @@ RightBrace      LeftBracket     RightBracket    LeftParent      RightParent     
 Comma           Dot             Colon           Hash            Return          Type            \
 Identifier      Keyword         Litteral_Expr"
             [tok.tok * 16]);
-        printf(!tok.text ? "\n": ": %s\n", tok.text);
     } while (tok.tok != tk_EOI);
     return 0;
 }

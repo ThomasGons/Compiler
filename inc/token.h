@@ -1,15 +1,11 @@
 #ifndef __TOKEN_H__
 #define __TOKEN_H__
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <error.h>
-#include <ctype.h>
+#include "main.h"
 
 
 typedef enum {
-    false, true
+    false, true, unknown
 } bool;
 
 // set of tokens in C language
@@ -39,10 +35,7 @@ typedef enum {
 typedef struct {
     token_val tok;
     int err_l, err_c; // line and column of error
-    union {
-        int value;
-        char *text;
-    };
+    void *value;
 } token;
 
 
