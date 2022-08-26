@@ -3,49 +3,59 @@
 
 #include "main.h"
 
+// temporary macro for error handling
+#define ERROR(fmt, args...) ({fprintf(stderr, fmt, ##args); exit(1);})
 
 typedef enum {
-    false, true, unknown
+    false, true
 } bool;
 
-// set of tokens in C language
 typedef enum {
-    tk_EOI,
-    
-    // operators
-    tk_Mul, tk_Div, tk_Mod, tk_Add, tk_Sub, 
-    tk_Lt, tk_Le, tk_Eq, tk_Ge, tk_Gt, tk_Neq, 
-    tk_And, tk_Or, tk_Not, tk_Addr,
+    TK_IDNT,    // identifier
+    TK_KW,      // keyword
+    TK_LIT,     // literal
+    TK_NB_LIT,  // numbers
+    TK_PUNC,    // punctuator (includes operators)
+} token_lbl;
 
-    // separators
-    tk_LBrc, tk_RBrc, tk_LBrk, tk_RBrk,
-    tk_LPrt, tk_RPrt, tk_Semi, tk_Comma,
-    tk_Dot, tk_Colon, tk_Hash,
-    
-    // keywords
-    tk_Return, tk_Type,
-
-    // identifiers
-    tk_Idnt, tk_Keyw,
-
-    tk_Lit_Expr
-} token_val;
-
-// struct for each token
 typedef struct {
-    token_val tok;
-    int err_l, err_c; // line and column of error
-    void *value;
+    token_lbl tok;
+    // useful in error handling
+    char* filename;
+    int line, col;
+    void *val;
 } token;
 
+typedef struct {
+    char* filename;
+    char* cnt;           
+    // position in the file's content (cnt) described with line and column 
+    unsigned line, col;  
+} str_file;
 
-void next_char();
-token following_char(char, token_val, token_val);
-token ident_keyword();
-bool is_keyword(char*);
-token lit_expr(token_val, char);
-bool is_div();
-token gettok();
-void error_token(char);
+// all punctuators in C
+char *punc[] = { 
+    "{", "}", "(", ")", "[", "]", ";", ".", "->", ",", "?", ":",
+    "+", "-", "*", "/", "%", "++", "--", "=", "+=", "-=", "*=", "/=", "%=",
+    "==", "!=", "<=", ">=", "<", ">", "||", "&&", 
+    "!", "|", "&", "^", "~", "<<", ">>", "|=", "&=", "^=", "<<=", ">>=",
+    "...", "#", "##"
+};
+
+// all keywords in C
+char *kw[] = {
+    "auto", "break", "case", "char", "const", "continue", "default",
+    "do", "double", "else", "enum", "extern", "float", "for", "goto",
+    "if", "int", "long", "register", "return", "short", "signed",
+    "sizeof", "static", "struct", "switch", "typedef", "union", "unsigned",
+    "void", "volatile", "while"
+};
+
+extern token tokenize (str_file);
+static str_file read_file (char*);
+static char *punctuator (char*);
+static bool is_keyword (char*);
+static char *identifier (char*);
+// static error_tok(char, ...);
 
 #endif
