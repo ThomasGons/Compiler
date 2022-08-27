@@ -1,7 +1,7 @@
 #include "../inc/token.h"
 
 
-int main (int argc, char **argv) {
+int main(int argc, char **argv) {
     // ./bin/exe <filename>
     if (argc != 2)
         ERROR("Too many arguments");    
@@ -11,7 +11,7 @@ int main (int argc, char **argv) {
 }
 
 // The content of the file is retrieved and stored in a string
-static str_file read_file (char *fname) {
+static str_file read_file(char *fname) {
     FILE * fp = fopen (fname, "r");
     if (!fp)
         ERROR("File could not be opened");
@@ -46,8 +46,30 @@ char *punctuator(char *s) {
     return NULL;
 }
 
+static char *str_copy(char *s, unsigned len) {
+    if (!len)
+        return NULL;
+
+    // copy of the str;
+    char *buffer = malloc(len);
+    memset(buffer, '\0', len);
+    strncpy(buffer, s, len);
+    return buffer;
+}
+
+
+static char *literal(char *s) {
+    if (*s == '"') {    // simple quote case remaining 
+        unsigned len = 1;
+        for (char *tmp = s + 1; *tmp != *s; *tmp++)
+            len++;
+        return str_copy(s + 1, len); // remove quotes
+    }
+    return NULL;
+}
+
 // check if the given string is a keyword; if it's not, it's an identifier
-bool is_keyword(char *s) {
+static bool is_keyword(char *s) {
     for (uint8_t i = 0; i < 32; i++) {
         if (!strncmp(s, kw[i], strlen(kw[i])))
             return true;
@@ -56,7 +78,7 @@ bool is_keyword(char *s) {
 }
 
 // check if the current token is an identifier; if it's, it returns it
-static char* identifier(char *s) {
+static char *identifier(char *s) {
     // digits are allowed in identifier but not at the beginning
     if (isdigit(*s))    
         return NULL;
@@ -68,25 +90,41 @@ static char* identifier(char *s) {
         len++;
         tmp++;
     }
-    if (!len)
-        return NULL;
+    return str_copy(s, len);
+}
 
-    // copy of the identifier
-    char *buffer = malloc(len);
-    memset(buffer, '\0', len);
-    strncpy(buffer, s, len);
-    return buffer;
+static char *number(char *s) {
+    /* all base 10 floats are supported */
+    if (isdigit(*s) || (*s == '.' && (*(s - 1) == ' ' || *(s - 1) == '='))  
+        || (*s == '-' && (*(s - 1) == ' ' || *(s - 1) == '='))) {
+        char *tmp = s;
+        unsigned len = 0;
+        bool is_float = false;
+        do {
+            tmp++;
+            len++;
+            if (*tmp == '.') {
+                // float cannot have mutliple floating points 
+                if (is_float)
+                    ERROR("Bad syntax for a number");
+                is_float = true;
+                tmp++;
+                len++;
+            }
+        } while (isdigit(*tmp));
+        return str_copy(s, len);
+    }
+    return NULL;
 }
 
 /* TO DO: the structure of the function will change because we want a stream of tokens.
  Each token once obtained must be returned to the parser so the previous token
  is overwritten by the new one  */ 
-extern token tokenize (str_file fs) {
+extern token tokenize(str_file fs) {
     token tok;
     // void pointer to retrieved the token value regardless of its type
     void *tok_val = NULL;
     do {
-
         /* It is important to note that the directives and comments of the preprocessor
          are absent at this stage in this phase because they have been processed and deleted
         by the previous phase: the preprocessing */
@@ -101,11 +139,23 @@ extern token tokenize (str_file fs) {
             fs.cnt++;
             continue;
         }
+        if (tok_val = number(fs.cnt)) {
+            tok = (token) {TK_NB, fs.filename, fs.line, fs.col, (char*) tok_val};
+            fs.col++;
+            fs.cnt += strlen((char*) tok_val);
+            continue;
+        }
         if (tok_val = punctuator(fs.cnt)) {
             tok = (token) {TK_PUNC, fs.filename, fs.line, fs.col, (char*) tok_val};
             fs.col++;
             // increment pointer address according to the length of the token found
             fs.cnt += strlen((char*) tok_val);
+            continue;
+        }
+        if (tok_val = literal(fs.cnt)) {
+            tok = (token) {TK_LIT, fs.filename, fs.line, fs.col, (char*) tok_val};
+            fs.col++;
+            fs.cnt += (strlen((char*) tok_val) + 2);  // add quotes that are not present
             continue;
         }
         if (tok_val = identifier(fs.cnt)) {

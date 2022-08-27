@@ -3,6 +3,7 @@
 
 #include "main.h"
 
+
 // temporary macro for error handling
 #define ERROR(fmt, args...) ({fprintf(stderr, fmt, ##args); exit(1);})
 
@@ -14,7 +15,7 @@ typedef enum {
     TK_IDNT,    // identifier
     TK_KW,      // keyword
     TK_LIT,     // literal
-    TK_NB_LIT,  // numbers
+    TK_NB,      // number
     TK_PUNC,    // punctuator (includes operators)
 } token_lbl;
 
@@ -51,11 +52,14 @@ char *kw[] = {
     "void", "volatile", "while"
 };
 
-extern token tokenize (str_file);
-static str_file read_file (char*);
-static char *punctuator (char*);
-static bool is_keyword (char*);
-static char *identifier (char*);
+static str_file read_file(char*);
+static char *punctuator(char*);
+static char *str_copy(char*, unsigned);
+static char *literal(char*);
+static bool is_keyword(char*);
+static char *identifier(char*);
+static char *number(char*);
+extern token tokenize(str_file);
 // static error_tok(char, ...);
 
 #endif
