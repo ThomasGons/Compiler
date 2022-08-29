@@ -8,4 +8,10 @@
 #include <stdint.h>
 #include <stdarg.h>
 
+
+typedef enum {
+    false, true
+} bool;
+
+
 #endif

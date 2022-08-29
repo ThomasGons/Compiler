@@ -2,14 +2,11 @@
 #define __TOKEN_H__
 
 #include "main.h"
-
+#include "symbol_tb.h"
 
 // temporary macro for error handling
 #define ERROR(fmt, args...) ({fprintf(stderr, fmt, ##args); exit(1);})
 
-typedef enum {
-    false, true
-} bool;
 
 typedef enum {
     TK_IDNT,    // identifier
@@ -55,11 +52,11 @@ char *kw[] = {
 static str_file read_file(char*);
 static char *punctuator(char*);
 static char *str_copy(char*, unsigned);
-static char *literal(char*);
-static bool is_keyword(char*);
+static char *literal(char*, bool*);
+static bool keyword(char*);
 static char *identifier(char*);
 static char *number(char*);
-extern token tokenize(str_file);
+extern token tokenize(str_file, symb_tb[]);
 // static error_tok(char, ...);
 
 #endif

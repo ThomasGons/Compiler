@@ -1,4 +1,5 @@
 #include "../inc/token.h"
+#include "../inc/symbol_tb.h"
 
 
 int main(int argc, char **argv) {
@@ -6,7 +7,9 @@ int main(int argc, char **argv) {
     if (argc != 2)
         ERROR("Too many arguments");    
     str_file s = read_file (argv[1]);
-    tokenize(s);
+    symb_tb sb_t[BUCKET_SIZE] = {NULL};
+    tokenize(s, sb_t);
+    display_symb_tb(sb_t);
     return 0;
 }
 
@@ -58,18 +61,42 @@ static char *str_copy(char *s, unsigned len) {
 }
 
 
-static char *literal(char *s) {
+static char *literal(char *s, bool *is_escape) {
     if (*s == '"') {    // simple quote case remaining 
+        *is_escape = false;
         unsigned len = 1;
         for (char *tmp = s + 1; *tmp != *s; *tmp++)
             len++;
-        return str_copy(s + 1, len); // remove quotes
+        return str_copy(s + 1, len - 1); // remove quotes
+    }
+    else if (*s == '\'') {
+        if (*(s + 2) == *s && (int) *(s + 1) < 127 && *(s + 1) != '\\') {
+            is_escape = false;
+            return str_copy(s + 1, 1); // ascii char not escaped
+        }
+        else if (*(s + 3) == *s) {
+            switch (*(s + 2)) {
+                case 'a': return "\a";
+                case 'b': return "\b";
+                case 'f': return "\f";
+                case 'n': return "\n";
+                case 'r': return "\r";
+                case 't': return "\t";
+                case 'v': return "\v";
+                case '\\': return "\\";
+                case '\'': return "\'";
+                case '"': return "\"";
+                case '0': return "\0";
+                default: ERROR("not a char");
+            }
+        }
+        ERROR("not a char");
     }
     return NULL;
 }
 
 // check if the given string is a keyword; if it's not, it's an identifier
-static bool is_keyword(char *s) {
+static bool keyword(char *s) {
     for (uint8_t i = 0; i < 32; i++) {
         if (!strncmp(s, kw[i], strlen(kw[i])))
             return true;
@@ -120,10 +147,11 @@ static char *number(char *s) {
 /* TO DO: the structure of the function will change because we want a stream of tokens.
  Each token once obtained must be returned to the parser so the previous token
  is overwritten by the new one  */ 
-extern token tokenize(str_file fs) {
+extern token tokenize(str_file fs, symb_tb sb_t[]) {
     token tok;
     // void pointer to retrieved the token value regardless of its type
-    void *tok_val = NULL;
+    char *tok_val = NULL;
+    unsigned hs; // hash for the symbol table
     do {
         /* It is important to note that the directives and comments of the preprocessor
          are absent at this stage in this phase because they have been processed and deleted
@@ -140,30 +168,36 @@ extern token tokenize(str_file fs) {
             continue;
         }
         if (tok_val = number(fs.cnt)) {
-            tok = (token) {TK_NB, fs.filename, fs.line, fs.col, (char*) tok_val};
+            tok = (token) {TK_NB, fs.filename, fs.line, fs.col, tok_val};
             fs.col++;
-            fs.cnt += strlen((char*) tok_val);
+            fs.cnt += strlen(tok_val);
             continue;
         }
         if (tok_val = punctuator(fs.cnt)) {
-            tok = (token) {TK_PUNC, fs.filename, fs.line, fs.col, (char*) tok_val};
+            tok = (token) {TK_PUNC, fs.filename, fs.line, fs.col, tok_val};
             fs.col++;
             // increment pointer address according to the length of the token found
-            fs.cnt += strlen((char*) tok_val);
+            fs.cnt += strlen(tok_val);
             continue;
         }
-        if (tok_val = literal(fs.cnt)) {
-            tok = (token) {TK_LIT, fs.filename, fs.line, fs.col, (char*) tok_val};
+        bool is_escape = true;
+        if (tok_val = literal(fs.cnt, &is_escape)) {
+            tok = (token) {TK_LIT, fs.filename, fs.line, fs.col, tok_val};
             fs.col++;
-            fs.cnt += (strlen((char*) tok_val) + 2);  // add quotes that are not present
+            fs.cnt += (strlen(tok_val) + 2 + is_escape);  // add quotes that are not present
             continue;
         }
         if (tok_val = identifier(fs.cnt)) {
             // an identifier can be a keyword
-            tok = (token) {is_keyword(tok_val) ? TK_KW: TK_IDNT, fs.filename, fs.line,
-                fs.col, (char*) tok_val};
+            bool is_keyword = keyword(tok_val);
+            tok = (token) { is_keyword ? TK_KW: TK_IDNT, fs.filename, fs.line,
+                fs.col, tok_val};
+            if (!is_keyword) {
+                unsigned hs = hash_djb2(tok_val);
+                sb_t[hs] = add_entry_symb_tb(sb_t, tok_val, hs);
+            }
             fs.col++;
-            fs.cnt += strlen((char*) tok_val);
+            fs.cnt += strlen(tok_val);
             continue;
         }
         /* later it will be necessary to return an error for an invalid token
