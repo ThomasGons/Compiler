@@ -4,9 +4,12 @@
 #include "main.h"
 #include "symbol_tb.h"
 
-// temporary macro for error handling
-#define ERROR(fmt, args...) ({fprintf(stderr, fmt, ##args); exit(1);})
+#define PUNC_SIZE 48
+#define KW_SIZE 32
 
+typedef enum {
+    WARN, ERR
+} err_kind;
 
 typedef enum {
     TK_IDNT,    // identifier
@@ -20,7 +23,7 @@ typedef struct {
     token_lbl tok;
     // useful in error handling
     char* filename;
-    int line, col;
+    unsigned line, col;
     void *val;
 } token;
 
@@ -31,16 +34,24 @@ typedef struct {
     unsigned line, col;  
 } str_file;
 
-// all punctuators in C
-char *punc[] = { 
-    "{", "}", "(", ")", "[", "]", ";", ".", "->", ",", "?", ":",
-    "+", "-", "*", "/", "%", "++", "--", "=", "+=", "-=", "*=", "/=", "%=",
-    "==", "!=", "<=", ">=", "<", ">", "||", "&&", 
-    "!", "|", "&", "^", "~", "<<", ">>", "|=", "&=", "^=", "<<=", ">>=",
-    "...", "#", "##"
+// all punctuators in C arranged in descending length
+char *punc[] = {
+    "...", 
+    "<<=", ">>=", 
+    
+    "+=", "-=", "*=", "/=", "%=", "++", "--", 
+    "<<", ">>", "|=", "&=", "^=",
+    "==", "!=", "<=", ">=", "||", "&&", 
+    "->", "##",
+
+    "=", "+", "-", "*", "/", "%",
+    "!", "|", "&", "^", "~",
+    "<", ">",
+    "{", "}", "(", ")", "[", "]", ";", ",", "?", ":",
+    ".", "#"
 };
 
-// all keywords in C
+// all keywords in C (alphabetical order)
 char *kw[] = {
     "auto", "break", "case", "char", "const", "continue", "default",
     "do", "double", "else", "enum", "extern", "float", "for", "goto",
@@ -50,13 +61,16 @@ char *kw[] = {
 };
 
 static str_file read_file(char*);
-static char *punctuator(char*);
-static char *str_copy(char*, unsigned);
-static char *literal(char*, bool*);
+static void error_tok(str_file, err_kind, char*);
+static char *err_line(str_file);
+static void skip_whitespace(str_file*);
+static char *str_copy(str_file*, unsigned, bool);
+static char *number(str_file*);
+static char *literal(str_file*);
+static char *escape_char(str_file *);
+static char *punctuator(str_file*);
+static char *identifier(str_file*);
 static bool keyword(char*);
-static char *identifier(char*);
-static char *number(char*);
-extern token tokenize(str_file, symb_tb[]);
-// static error_tok(char, ...);
+extern token tokenize(str_file*, symb_tb[]);
 
 #endif

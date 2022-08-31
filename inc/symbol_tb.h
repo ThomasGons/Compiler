@@ -5,7 +5,7 @@
 
 /* The symbol table is implemented using a hash map */
 
-#define BUCKET_SIZE 255 // arbitrary number of buckets
+#define BUCKET_SIZE 256 // arbitrary number of buckets
 
 typedef struct node {
     unsigned usg_l;
@@ -15,7 +15,7 @@ typedef struct node {
 typedef struct {
         char *name;
         char *type;
-        unsigned size;
+        unsigned size;      // in bytes
         uint8_t dim;        // dimension: 0 for the scalar
         unsigned decl_l;    // declaration line
         list usg_llist;     // lines of usage
@@ -30,6 +30,8 @@ typedef struct entry {
 
 unsigned hash_djb2(char*);
 symb_tb add_entry_symb_tb(symb_tb[], char*, unsigned);
+bool lookup_symb_tb(symb_tb[], char*);
 void display_symb_tb(symb_tb[]);
+
 
 #endif

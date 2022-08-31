@@ -3,21 +3,52 @@
 
 
 int main(int argc, char **argv) {
-    // ./bin/exe <filename>
-    if (argc != 2)
-        ERROR("Too many arguments");    
-    str_file s = read_file (argv[1]);
+    str_file sf = read_file(argv[1]);
     symb_tb sb_t[BUCKET_SIZE] = {NULL};
-    tokenize(s, sb_t);
-    display_symb_tb(sb_t);
+    token tok;
+    do {
+        tok = tokenize(&sf, sb_t);
+    } while (*sf.cnt != '\0');
+    // display_symb_tb(sb_t);
     return 0;
 }
+
+static void error_tok(str_file sf, err_kind kind, char *msg) {
+    fprintf(stderr, BOLD "%s" RES ":%u:%u: %s: %s", 
+        sf.filename, sf.line, sf.col,
+        kind == WARN ? WARN_CLR "warning" RES : ERR_CLR "error" RES,
+        msg);
+    char* err_l = err_line(sf);
+    fprintf(stderr, "\n%u |\t%s\n  |\t", sf.line, err_l);
+    for (uint8_t i = 0; *(err_l + i) != '\0'; i++) {
+        if (i > sf.col && isspace(*(err_l + i)))
+            break;
+        fprintf(stderr, i < sf.col ? " ":
+                        i == sf.col ? 
+                            ((kind == WARN) ? WARN_CLR "^" RES: ERR_CLR "^" RES):
+                            ((kind == WARN) ? WARN_CLR "~" RES: ERR_CLR "~" RES));
+    }
+    fprintf(stderr, "\n");
+    if (kind == ERR)
+        exit(1);
+}
+
+static char *err_line(str_file sf) {
+    char *end_l = strchr(sf.cnt, '\n');
+    unsigned final_len = end_l - (sf.cnt - sf.col);
+    char *buffer = malloc(final_len);
+    memset(buffer, '\0', final_len);
+    strncpy(buffer, sf.cnt - sf.col, final_len);
+    return buffer;
+}
+
 
 // The content of the file is retrieved and stored in a string
 static str_file read_file(char *fname) {
     FILE * fp = fopen (fname, "r");
-    if (!fp)
-        ERROR("File could not be opened");
+    if (!fp) {
+        perror("Error"); exit(1);
+    }
 
     // calculation of the number of characters in the file
     fseek(fp, 0, SEEK_END);
@@ -25,105 +56,52 @@ static str_file read_file(char *fname) {
     fseek(fp, 0, SEEK_SET);
     // buffer that will store the content of the file
     char *buffer = malloc (sizeof(char) *length);
-    if (!buffer)
-        ERROR("Couldn't allocate memory for the buffer");
+    if (!buffer) {
+        perror("Error"); exit(1);
+    }
     fread (buffer, 1, length, fp);
     fclose (fp);
-    return (str_file) {fname, buffer, 1, 0};
+    return (str_file) {fname, buffer, 1, 1}; // init to line 1 column 1
 }
 
 
-/* static void error_tok(char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-} */
-
-/* TO DO: punctuators should be invalid when there are a repetition
-    of undesired punctuator like "+++" or "===" */
 // check if the current token is a punctuator; if it's, it returns it
-char *punctuator(char *s) {
-    for (uint8_t i = 0; i < 48; i++) {
-        if (!strncmp(s, punc[i], strlen(punc[i])))
-            return punc[i];
+static void skip_whitespace(str_file *sf) {
+    char *s = sf->cnt;
+    unsigned len = 0;
+    while (isspace(*s) || *s == '\a' || *s == '\b') {
+        // line and column are updated if it's a new line
+        len = (*s == '\t' || *s == '\v') ? 4: 1;
+        if (*s == '\n') {
+            sf->line++;
+            sf->col = 0;
+        }
+        else  {
+            sf->col += len;
+        }
+        s += len;
     }
-    return NULL;
+    sf->cnt = s;
 }
 
-static char *str_copy(char *s, unsigned len) {
+static char *str_copy(str_file *sf, unsigned len, bool is_lit) {
     if (!len)
         return NULL;
 
     // copy of the str;
     char *buffer = malloc(len);
     memset(buffer, '\0', len);
-    strncpy(buffer, s, len);
+    strncpy(buffer, sf->cnt, len);
+    sf->col += (len + (is_lit ? 1: 0));   // add the closing quote
+    sf->cnt += (len + (is_lit ? 1: 0));
     return buffer;
 }
 
-
-static char *literal(char *s, bool *is_escape) {
-    if (*s == '"') {    // simple quote case remaining 
-        *is_escape = false;
-        unsigned len = 1;
-        for (char *tmp = s + 1; *tmp != *s; *tmp++)
-            len++;
-        return str_copy(s + 1, len - 1); // remove quotes
-    }
-    else if (*s == '\'') {
-        if (*(s + 2) == *s && (int) *(s + 1) < 127 && *(s + 1) != '\\') {
-            is_escape = false;
-            return str_copy(s + 1, 1); // ascii char not escaped
-        }
-        else if (*(s + 3) == *s) {
-            switch (*(s + 2)) {
-                case 'a': return "\a";
-                case 'b': return "\b";
-                case 'f': return "\f";
-                case 'n': return "\n";
-                case 'r': return "\r";
-                case 't': return "\t";
-                case 'v': return "\v";
-                case '\\': return "\\";
-                case '\'': return "\'";
-                case '"': return "\"";
-                case '0': return "\0";
-                default: ERROR("not a char");
-            }
-        }
-        ERROR("not a char");
-    }
-    return NULL;
-}
-
-// check if the given string is a keyword; if it's not, it's an identifier
-static bool keyword(char *s) {
-    for (uint8_t i = 0; i < 32; i++) {
-        if (!strncmp(s, kw[i], strlen(kw[i])))
-            return true;
-    }
-    return false;
-}
-
-// check if the current token is an identifier; if it's, it returns it
-static char *identifier(char *s) {
-    // digits are allowed in identifier but not at the beginning
-    if (isdigit(*s))    
-        return NULL;
-    // length of the identifier is necessary to copy it
-    unsigned len = 0;
-    // temporary variable to make the copy easier later
-    char *tmp = s;
-    while (isalnum(*tmp) || *tmp == '_') {
-        len++;
-        tmp++;
-    }
-    return str_copy(s, len);
-}
-
-static char *number(char *s) {
+static char *number(str_file *sf) {
     /* all base 10 floats are supported */
-    if (isdigit(*s) || (*s == '.' && (*(s - 1) == ' ' || *(s - 1) == '='))  
-        || (*s == '-' && (*(s - 1) == ' ' || *(s - 1) == '='))) {
+    char *s = sf->cnt;
+    if (isdigit(*s) || (*s == '.' && isspace(*(s - 1)) || *(s - 1) == '=')  
+        || (*s == '-' && isspace(*(s - 1)) || *(s - 1) == '=')) {
         char *tmp = s;
         unsigned len = 0;
         bool is_float = false;
@@ -133,76 +111,136 @@ static char *number(char *s) {
             if (*tmp == '.') {
                 // float cannot have mutliple floating points 
                 if (is_float)
-                    ERROR("Bad syntax for a number");
+                    error_tok(*sf, WARN, "Bad number syntax");
+
                 is_float = true;
                 tmp++;
                 len++;
             }
         } while (isdigit(*tmp));
-        return str_copy(s, len);
+        sf->col += len;
+        return str_copy(sf, len, false);
     }
     return NULL;
 }
 
-/* TO DO: the structure of the function will change because we want a stream of tokens.
- Each token once obtained must be returned to the parser so the previous token
- is overwritten by the new one  */ 
-extern token tokenize(str_file fs, symb_tb sb_t[]) {
-    token tok;
-    // void pointer to retrieved the token value regardless of its type
-    char *tok_val = NULL;
-    unsigned hs; // hash for the symbol table
-    do {
-        /* It is important to note that the directives and comments of the preprocessor
-         are absent at this stage in this phase because they have been processed and deleted
-        by the previous phase: the preprocessing */
+static char *literal(str_file *sf) {
+    char *s = sf->cnt;
+    if (*s == '\"' || *s == '\'') {
+        char delim = *sf->cnt;
+        if (!strchr(s + 1, delim))
+            error_tok(*sf, WARN, "Unclosed quotes");
+        
+        if (*s =='\"') {
+            unsigned len = 1;
+            // '*s' acts as a delimiter "
+            for (char *tmp = s + 1; *tmp != delim; *tmp++)
+                len++;
+            sf->cnt++;
+            return str_copy(sf, len - 1, true); // remove quotes
+        }
+        else { 
+            // '*sf->cnt' acts as a delimiter ' 
+            // check for negative values
+            if (*(s + 2) == delim && (int) *(s + 1) < 127 && *(s + 1) != '\\') {
+                sf->col += 3;
+                sf->cnt++;
+                return str_copy(sf, 1, true); // ascii char not escaped
+            }
+            else if (*(s + 3) == delim)
+                return escape_char(sf);
+        }
+        error_tok(*sf, WARN, "Not a char");
+    }
+    return NULL;
+}
 
-        // when any type of whitespace is encountered, just continue
-        if (isspace(*fs.cnt) || *fs.cnt == '\a' || *fs.cnt == '\b') {
-            // line and column are updated if it's a new line
-            if (*fs.cnt == '\n') {
-                fs.line++;
-                fs.col = 0;
-            }
-            fs.cnt++;
-            continue;
+static char *escape_char(str_file *sf) {
+    char *s = sf->cnt, *esc_char = malloc(sizeof *esc_char);
+    switch (*(s + 2)) {
+        case 'a': *esc_char = '\a'; break;
+        case 'b': *esc_char = '\b'; break;
+        case 'f': *esc_char = '\f'; break;
+        case 'n': *esc_char = '\n'; break;
+        case 'r': *esc_char = '\r'; break;
+        case 't': *esc_char = '\t'; break;
+        case 'v': *esc_char = '\v'; break;
+        case '\\': *esc_char = '\\'; break; 
+        case '\'': *esc_char = '\''; break;
+        case '"': *esc_char = '\"'; break;
+        case '0': *esc_char = '\0'; break;
+        default: 
+            error_tok(*sf, WARN, "Not an escape char");
+    }
+    sf->col += 4;
+    return esc_char;
+}
+
+char *punctuator(str_file *sf) {
+    char *s = sf->cnt;
+    size_t len = 0;
+    for (uint8_t i = 0; i < PUNC_SIZE; i++) {
+        len = strlen(punc[i]);
+        if (!strncmp(s, punc[i], len)) {
+            sf->col += len;
+            sf->cnt += len;
+            return punc[i];
         }
-        if (tok_val = number(fs.cnt)) {
-            tok = (token) {TK_NB, fs.filename, fs.line, fs.col, tok_val};
-            fs.col++;
-            fs.cnt += strlen(tok_val);
-            continue;
+    }
+    return NULL;
+}
+
+// check if the current token is an identifier; if it's, it returns it
+static char *identifier(str_file *sf) {
+    char *s = sf->cnt;
+    // digits are allowed in identifier but not at the beginning
+    if (isdigit(*s))  
+        return NULL;
+    // length of the identifier is necessary to copy it
+    unsigned len = 0;
+    // temporary variable to make the copy easier later
+    char *tmp = s;
+    while (isalnum(*tmp) || *tmp == '_') {
+        len++;
+        tmp++;
+    }
+    return str_copy(sf, len, false);
+}
+
+// check if the given string is a keyword; if it's not, it's an identifier
+static bool keyword(char *s) {
+    for (uint8_t i = 0; i < KW_SIZE; i++) {
+        if (!strncmp(s, kw[i], strlen(kw[i])))
+            return true;
+    }
+    return false;
+}
+
+
+extern token tokenize(str_file *sf, symb_tb sb_t[]) {
+    char *tok_val = NULL;
+    token_lbl tok_lbl = -1;
+    unsigned hs; // hash for the symbol table
+
+    // when any type of whitespace is encountered, just continue
+    skip_whitespace(sf);
+    if (tok_val = number(sf)) 
+        tok_lbl = TK_NB;
+    else if (tok_val = literal(sf))
+        tok_lbl = TK_LIT;
+    else if (tok_val = punctuator(sf))
+        tok_lbl = TK_PUNC;
+    else if (tok_val = identifier(sf)) {
+        if (keyword(tok_val))
+            tok_lbl = TK_KW;
+        else { 
+            tok_lbl = TK_IDNT;
+            unsigned hs = hash_djb2(tok_val);
+            sb_t[hs] = add_entry_symb_tb(sb_t, tok_val, hs);
         }
-        if (tok_val = punctuator(fs.cnt)) {
-            tok = (token) {TK_PUNC, fs.filename, fs.line, fs.col, tok_val};
-            fs.col++;
-            // increment pointer address according to the length of the token found
-            fs.cnt += strlen(tok_val);
-            continue;
-        }
-        bool is_escape = true;
-        if (tok_val = literal(fs.cnt, &is_escape)) {
-            tok = (token) {TK_LIT, fs.filename, fs.line, fs.col, tok_val};
-            fs.col++;
-            fs.cnt += (strlen(tok_val) + 2 + is_escape);  // add quotes that are not present
-            continue;
-        }
-        if (tok_val = identifier(fs.cnt)) {
-            // an identifier can be a keyword
-            bool is_keyword = keyword(tok_val);
-            tok = (token) { is_keyword ? TK_KW: TK_IDNT, fs.filename, fs.line,
-                fs.col, tok_val};
-            if (!is_keyword) {
-                unsigned hs = hash_djb2(tok_val);
-                sb_t[hs] = add_entry_symb_tb(sb_t, tok_val, hs);
-            }
-            fs.col++;
-            fs.cnt += strlen(tok_val);
-            continue;
-        }
-        /* later it will be necessary to return an error for an invalid token
-            but for the moment not all types of tokens are implemented. */
-        *fs.cnt++;
-    // don't forget that it's a string;
-    } while (*fs.cnt != '\0');
+    }
+    else
+        error_tok(*sf, ERR, "invalid token");
+    
+    return (token) {tok_lbl, sf->filename, sf->line, sf->col, tok_val};
 }

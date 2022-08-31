@@ -1,12 +1,13 @@
 #include <stdio.h>
 
-#define NB -4.02
+#define NB 4.0.2
 
 int main(int argc, char **argv) {
     int nb;
+    int a = 0;
     printf("You've to found to mystery nb (1 - 10).\n");
     do {
-        scanf("%d", &nb);
+        scanf(%d, &nb);
         if (nb > NB)
             printf("Lower.\n");
         else if (nb < NB)
