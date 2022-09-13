@@ -3,8 +3,8 @@
 # Compiler, linker and flags
 
 CC = gcc #-fsanitize=address
-CFLAGS = -g -O3 -l -Wall -Wextra -std=c17
-LDFLAGS = -Wall -I$(DINC) -lm
+CFLAGS = -g -O3 -l -Wall -Wextra -std=c17 -I$(DINC)
+LDFLAGS = -Wall -lm
 
 # Directories
 

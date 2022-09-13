@@ -2,7 +2,7 @@
 
 unsigned hash_djb2(char *s) {
     unsigned long hs = 5381, i;
-    while (i = *s++)
+    while ((i = *s++))
         hs += ((hs << 5) + i);
     return hs % BUCKET_SIZE;
 }

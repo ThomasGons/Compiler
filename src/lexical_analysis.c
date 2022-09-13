@@ -1,163 +1,230 @@
-#include "../inc/token.h"
-#include "../inc/symbol_tb.h"
+#include "token.h"
+#include "symbol_tb.h"
 
 
 int main(int argc, char **argv) {
-    str_file sf = read_file(argv[1]);
+    FILE *sf = fopen(argv[1], "r");
+    file_d f = {sf, argv[1], 1, 1};
+    circ_buf c_buf = init_circ_buffer();
     symb_tb sb_t[BUCKET_SIZE] = {NULL};
+    fill_circ_buffer(&f, &c_buf, 0);
     token tok;
+    bool prev_is_wtsp_eq = false;
     do {
-        tok = tokenize(&sf, sb_t);
-    } while (*sf.cnt != '\0');
+        tok = tokenize(&f, &c_buf, sb_t, &prev_is_wtsp_eq);
+    } while (c_buf.cread_p->c != EOF);
+    // token tok;
+    // do {
+    //     tok = tokenize(&sf, sb_t);
+    // } while (*sf.cnt != '\0');
     // display_symb_tb(sb_t);
+    free(c_buf.cnt);
     return 0;
 }
 
-static void error_tok(str_file sf, err_kind kind, char *msg) {
-    fprintf(stderr, BOLD "%s" RES ":%u:%u: %s: %s", 
-        sf.filename, sf.line, sf.col,
-        kind == WARN ? WARN_CLR "warning" RES : ERR_CLR "error" RES,
-        msg);
-    char* err_l = err_line(sf);
-    fprintf(stderr, "\n%u |\t%s\n  |\t", sf.line, err_l);
-    for (uint8_t i = 0; *(err_l + i) != '\0'; i++) {
-        if (i > sf.col && isspace(*(err_l + i)))
+circ_buf init_circ_buffer() {
+    circ_buf_d *cnt = calloc(CIRC_BUF_LEN, sizeof *cnt);
+    circ_buf_d *cread_p = cnt;
+    return (circ_buf) {cread_p, cnt};
+}
+
+void fill_circ_buffer(file_d *f, circ_buf *c_buf, uint8_t offset) {
+    bool prev_is_wtsp = (f->col == 1) ? false:
+     IS_WHITESPACE(c_buf->cnt[CIRC_BUF_LEN - 1].c) ? true: false;
+    for (uint8_t i = offset; i < CIRC_BUF_LEN; i++) {
+        if (i > 0)
+            prev_is_wtsp = IS_WHITESPACE(c_buf->cnt[i - 1].c) ? true: false;
+        c_buf->cnt[i] = skip_whitespace(f, prev_is_wtsp);
+        if (c_buf->cnt[i].c == EOF)
             break;
-        fprintf(stderr, i < sf.col ? " ":
-                        i == sf.col ? 
-                            ((kind == WARN) ? WARN_CLR "^" RES: ERR_CLR "^" RES):
-                            ((kind == WARN) ? WARN_CLR "~" RES: ERR_CLR "~" RES));
     }
-    fprintf(stderr, "\n");
-    if (kind == ERR)
-        exit(1);
+    c_buf->cread_p = c_buf->cnt;
 }
 
-static char *err_line(str_file sf) {
-    char *end_l = strchr(sf.cnt, '\n');
-    unsigned final_len = end_l - (sf.cnt - sf.col);
-    char *buffer = malloc(final_len);
-    memset(buffer, '\0', final_len);
-    strncpy(buffer, sf.cnt - sf.col, final_len);
-    return buffer;
+circ_buf_d skip_whitespace(file_d *f, bool prev_is_wtsp) {
+    char c = getc(f->sf);
+    while (IS_WHITESPACE(c) && prev_is_wtsp) {
+        len_skipped(f, c);
+        c = getc(f->sf);
+    }
+    len_skipped(f, c);
+    return (circ_buf_d) {c, f->line, f->col};
 }
 
-
-// The content of the file is retrieved and stored in a string
-static str_file read_file(char *fname) {
-    FILE * fp = fopen (fname, "r");
-    if (!fp) {
-        perror("Error"); exit(1);
-    }
-
-    // calculation of the number of characters in the file
-    fseek(fp, 0, SEEK_END);
-    long length = ftell(fp);
-    fseek(fp, 0, SEEK_SET);
-    // buffer that will store the content of the file
-    char *buffer = malloc (sizeof(char) *length);
-    if (!buffer) {
-        perror("Error"); exit(1);
-    }
-    fread (buffer, 1, length, fp);
-    fclose (fp);
-    return (str_file) {fname, buffer, 1, 1}; // init to line 1 column 1
-}
-
-
-// check if the current token is a punctuator; if it's, it returns it
-static void skip_whitespace(str_file *sf) {
-    char *s = sf->cnt;
+void len_skipped(file_d *f, char c) {
     unsigned len = 0;
-    while (isspace(*s) || *s == '\a' || *s == '\b') {
-        // line and column are updated if it's a new line
-        len = (*s == '\t' || *s == '\v') ? 4: 1;
-        if (*s == '\n') {
-            sf->line++;
-            sf->col = 0;
-        }
-        else  {
-            sf->col += len;
-        }
-        s += len;
+    len = (c == '\t' || c == '\v') ? 4: 1;
+    if (c == '\n') {
+        f->line++;
+        f->col = 1;
     }
-    sf->cnt = s;
+    else
+        f->col += len;
 }
 
-static char *str_copy(str_file *sf, unsigned len, bool is_lit) {
+void peek(file_d *f, circ_buf *c_buf) {
+    uint8_t shift = c_buf->cread_p - c_buf->cnt;
+    // shift the bytes after cread_p to the beginning
+    for (uint8_t i = shift, k = 0; i < CIRC_BUF_LEN; i++, k++)
+        c_buf->cnt[k] = c_buf->cnt[i];
+    // fill the remaining bytes
+    fill_circ_buffer(f, c_buf, CIRC_BUF_LEN - shift);
+    c_buf->cread_p = c_buf->cnt;
+} 
+
+
+// void error_tok(str_file sf, err_kind kind, char *msg) {
+//     fprintf(stderr, BOLD "%s" RES ":%u:%u: %s: %s", 
+//         sf.filename, sf.line, sf.col,
+//         kind == WARN ? WARN_CLR "warning" RES : ERR_CLR "error" RES,
+//         msg);
+//     char* err_l = err_line(sf);
+//     fprintf(stderr, "\n%u |\t%s\n  |\t", sf.line, err_l);
+//     for (uint8_t i = 0; *(err_l + i) != '\0'; i++) {
+//         if (i > sf.col && isspace(*(err_l + i)))
+//             break;
+//         fprintf(stderr, i < sf.col ? " ":
+//                         i == sf.col ? 
+//                             ((kind == WARN) ? WARN_CLR "^" RES: ERR_CLR "^" RES):
+//                             ((kind == WARN) ? WARN_CLR "~" RES: ERR_CLR "~" RES));
+//     }
+//     fprintf(stderr, "\n");
+//     if (kind == ERR)
+//         exit(1);
+// }
+
+// char *err_line(str_file sf) {
+//     char *end_l = strchr(sf.cnt, '\n');
+//     unsigned final_len = end_l - (sf.cnt - sf.col);
+//     char *buffer = malloc(final_len);
+//     memset(buffer, '\0', final_len);
+//     strncpy(buffer, sf.cnt - sf.col, final_len);
+//     return buffer;
+// }
+
+// // check if the current token is a punctuator; if it's, it returns it
+bool compounded_strcmp(circ_buf_d *cnt, char *s) {
+    for (uint8_t i = 0; i < strlen(s) + 1; i++) {
+        if (cnt[i].c != *s)
+            return false;
+        s++;
+    }
+    return true;
+}
+
+char *str_copy(file_d *f, circ_buf *c_buf, unsigned len) {
     if (!len)
         return NULL;
 
-    // copy of the str;
-    char *buffer = malloc(len);
-    memset(buffer, '\0', len);
-    strncpy(buffer, sf->cnt, len);
-    sf->col += (len + (is_lit ? 1: 0));   // add the closing quote
-    sf->cnt += (len + (is_lit ? 1: 0));
-    return buffer;
+    // index of cread_p
+    uint8_t idx_cread_p = c_buf->cread_p - c_buf->cnt;
+    // len + 1 to add end of string char
+    char *buf = malloc(len + 1), *tmp = buf;
+    memset(buf, '\0', len + 1);
+    for (uint8_t i = idx_cread_p; i < idx_cread_p + len; i++, tmp++)
+        *tmp = c_buf->cnt[i].c;
+
+    if (idx_cread_p + len == CIRC_BUF_LEN)
+        fill_circ_buffer(f, c_buf, 0);
+    else
+        c_buf->cread_p += len;
+
+    return buf;
 }
 
-static char *number(str_file *sf) {
+// As buffer content is an array of struct, comparison using strncmp is impossible
+char *fill_buffer(file_d *f, circ_buf *c_buf, char *buf, unsigned len) {
+    if (!buf)
+        return str_copy(f, c_buf, len);
+
+    char *tmp_buf = str_copy(f, c_buf, len);
+    if (!tmp_buf)
+        return buf;
+    char *result = malloc(strlen(buf) + strlen(tmp_buf) + 1);
+    strcpy(result, buf);
+    strcat(result, tmp_buf);
+    return result;
+}
+
+
+
+void circ_buf_display_cnt(circ_buf_d *cnt, unsigned len) {
+   printf("'");
+    for (uint8_t i = 0; i < len; i++)
+        printf("%c", cnt[i].c);
+    printf("'\n");
+}
+
+
+char *number(file_d *f, circ_buf *c_buf, bool prev_is_wtsp_eq) {
     /* all base 10 floats are supported */
-    char *s = sf->cnt;
-    if (isdigit(*s) || (*s == '.' && isspace(*(s - 1)) || *(s - 1) == '=')  
-        || (*s == '-' && isspace(*(s - 1)) || *(s - 1) == '=')) {
-        char *tmp = s;
-        unsigned len = 0;
+    if (isdigit(c_buf->cread_p->c) || (c_buf->cread_p->c == '.' && prev_is_wtsp_eq)
+        || c_buf->cread_p->c == '-' && prev_is_wtsp_eq) {
+        circ_buf_d *tmp = c_buf->cread_p + 1;
+        char *buf = NULL;
+        unsigned len = 1;
         bool is_float = false;
-        do {
-            tmp++;
-            len++;
-            if (*tmp == '.') {
+        while (isdigit(tmp->c)) {
+            UNDEFINED_SIZE_TOK(f, c_buf, buf, tmp, len);
+            if (tmp->c == '.') {
                 // float cannot have mutliple floating points 
-                if (is_float)
-                    error_tok(*sf, WARN, "Bad number syntax");
+                // if (is_float)
+                //     error_tok(*sf, WARN, "Bad number syntax");
 
                 is_float = true;
                 tmp++;
                 len++;
             }
-        } while (isdigit(*tmp));
-        sf->col += len;
-        return str_copy(sf, len, false);
+        } ;
+        buf = fill_buffer(f, c_buf, buf, len);
+        return buf;
     }
     return NULL;
 }
 
-static char *literal(str_file *sf) {
-    char *s = sf->cnt;
-    if (*s == '\"' || *s == '\'') {
-        char delim = *sf->cnt;
-        if (!strchr(s + 1, delim))
-            error_tok(*sf, WARN, "Unclosed quotes");
-        
-        if (*s =='\"') {
-            unsigned len = 1;
-            // '*s' acts as a delimiter "
-            for (char *tmp = s + 1; *tmp != delim; *tmp++)
-                len++;
-            sf->cnt++;
-            return str_copy(sf, len - 1, true); // remove quotes
-        }
-        else { 
-            // '*sf->cnt' acts as a delimiter ' 
-            // check for negative values
-            if (*(s + 2) == delim && (int) *(s + 1) < 127 && *(s + 1) != '\\') {
-                sf->col += 3;
-                sf->cnt++;
-                return str_copy(sf, 1, true); // ascii char not escaped
+char *literal(file_d *f, circ_buf *c_buf) {
+    if (c_buf->cread_p->c == '\"' || c_buf->cread_p->c  == '\'') {
+        char delim = c_buf->cread_p->c;
+        char *buf = NULL;
+        if (delim =='\"') {
+            unsigned len = 0;
+            // do not consider the quotes
+            CREAD_P_FORWARD(f, c_buf)
+            circ_buf_d *tmp = c_buf->cread_p;
+            while (tmp->c != delim) {
+                UNDEFINED_SIZE_TOK(f, c_buf, buf, tmp, len);
+                // TODO: EOF
+                if (tmp->c == EOF || tmp->c == '\n')
+                    exit(1);
             }
-            else if (*(s + 3) == delim)
-                return escape_char(sf);
+            buf = fill_buffer(f, c_buf, buf, len);
+            CREAD_P_FORWARD(f, c_buf);
+            return buf;
+
         }
-        error_tok(*sf, WARN, "Not a char");
+        else {
+            // do not consider the quotes
+            CREAD_P_FORWARD(f, c_buf)
+            INSUFFICIENT_SPACE_PEEK(f, c_buf, 2);
+            if ((c_buf->cread_p + 2)->c == delim && (int) (c_buf->cread_p + 1)->c > 0
+                && (int) (c_buf->cread_p + 1)->c < 127 && (c_buf->cread_p + 1)->c != '\\') {
+                buf = str_copy(f, c_buf, 1); // ascii char not escaped
+                CREAD_P_FORWARD(f, c_buf);
+                return buf;
+            }
+
+            INSUFFICIENT_SPACE_PEEK(f, c_buf, 3);
+            if ((c_buf->cread_p + 3)->c == delim) 
+                return escape_char(f, c_buf->cread_p);
+        }
+        // error_tok(*sf, WARN, "Not a char");
     }
     return NULL;
 }
 
-static char *escape_char(str_file *sf) {
-    char *s = sf->cnt, *esc_char = malloc(sizeof *esc_char);
-    switch (*(s + 2)) {
+char *escape_char(file_d *f, circ_buf_d *cread_p) {
+    char *esc_char = malloc(sizeof *esc_char);
+    switch ((cread_p + 2)->c) {
         case 'a': *esc_char = '\a'; break;
         case 'b': *esc_char = '\b'; break;
         case 'f': *esc_char = '\f'; break;
@@ -170,20 +237,18 @@ static char *escape_char(str_file *sf) {
         case '"': *esc_char = '\"'; break;
         case '0': *esc_char = '\0'; break;
         default: 
-            error_tok(*sf, WARN, "Not an escape char");
+            ; // error_tok(*sf, WARN, "Not an escape char");
     }
-    sf->col += 4;
+    cread_p += 3;
     return esc_char;
 }
 
-char *punctuator(str_file *sf) {
-    char *s = sf->cnt;
-    size_t len = 0;
+char *punctuator(file_d *f, circ_buf *c_buf) {
     for (uint8_t i = 0; i < PUNC_SIZE; i++) {
-        len = strlen(punc[i]);
-        if (!strncmp(s, punc[i], len)) {
-            sf->col += len;
-            sf->cnt += len;
+        // peek forward elements if the size of the punc's element exceeds the available reading space of the buffer
+        INSUFFICIENT_SPACE_PEEK(f, c_buf, strlen(punc[i]));
+        if (compounded_strcmp(c_buf->cread_p, punc[i])) {
+            c_buf->cread_p += strlen(punc[i]);
             return punc[i];
         }
     }
@@ -191,56 +256,65 @@ char *punctuator(str_file *sf) {
 }
 
 // check if the current token is an identifier; if it's, it returns it
-static char *identifier(str_file *sf) {
-    char *s = sf->cnt;
-    // digits are allowed in identifier but not at the beginning
-    if (isdigit(*s))  
+char *identifier(file_d *f, circ_buf *c_buf) {
+   // digits are allowed in identifier but not at the beginning
+    if (!isalpha(c_buf->cread_p->c))  
         return NULL;
-    // length of the identifier is necessary to copy it
-    unsigned len = 0;
-    // temporary variable to make the copy easier later
-    char *tmp = s;
-    while (isalnum(*tmp) || *tmp == '_') {
-        len++;
-        tmp++;
-    }
-    return str_copy(sf, len, false);
+    unsigned len = 1;
+    circ_buf_d *tmp = c_buf->cread_p + 1;
+    char *buf = NULL;
+    while (isalnum(tmp->c) || tmp->c == '_')
+        UNDEFINED_SIZE_TOK(f, c_buf, buf, tmp, len);
+
+    buf = fill_buffer(f, c_buf, buf, len);
+    return buf;
 }
 
 // check if the given string is a keyword; if it's not, it's an identifier
-static bool keyword(char *s) {
+bool keyword(char *s) {
+    unsigned len = strlen(s);
     for (uint8_t i = 0; i < KW_SIZE; i++) {
+        if (len > strlen(kw[i]))
+            return false;
         if (!strncmp(s, kw[i], strlen(kw[i])))
             return true;
     }
     return false;
 }
 
-
-extern token tokenize(str_file *sf, symb_tb sb_t[]) {
+token tokenize(file_d *f, circ_buf *c_buf, symb_tb sb_t[], bool *is_wtsp_eq) {
     char *tok_val = NULL;
-    token_lbl tok_lbl = -1;
+    token_kind tok_kind = -1;
     unsigned hs; // hash for the symbol table
+    // if cread_p has reached the end of the buffer
+    if (c_buf->cread_p - c_buf->cnt == CIRC_BUF_LEN - 1)
+        fill_circ_buffer(f, c_buf, 0);
+    
+    // if there is a whitespace: skip
+    if (IS_WHITESPACE(c_buf->cread_p->c)) {
+        *is_wtsp_eq = true;
+        c_buf->cread_p++;
+    }
 
-    // when any type of whitespace is encountered, just continue
-    skip_whitespace(sf);
-    if (tok_val = number(sf)) 
-        tok_lbl = TK_NB;
-    else if (tok_val = literal(sf))
-        tok_lbl = TK_LIT;
-    else if (tok_val = punctuator(sf))
-        tok_lbl = TK_PUNC;
-    else if (tok_val = identifier(sf)) {
+    // get token
+    if ((tok_val = number(f, c_buf, *is_wtsp_eq)))
+        tok_kind = TK_NB;
+    else if ((tok_val = literal(f, c_buf)))
+        tok_kind = TK_LIT;
+    else if ((tok_val = punctuator(f, c_buf)))
+        tok_kind = TK_PUNC;
+    else if ((tok_val = identifier(f, c_buf))) {
         if (keyword(tok_val))
-            tok_lbl = TK_KW;
+            tok_kind = TK_KW;
         else { 
-            tok_lbl = TK_IDNT;
+            tok_kind = TK_IDNT;
             unsigned hs = hash_djb2(tok_val);
             sb_t[hs] = add_entry_symb_tb(sb_t, tok_val, hs);
         }
     }
-    else
-        error_tok(*sf, ERR, "invalid token");
-    
-    return (token) {tok_lbl, sf->filename, sf->line, sf->col, tok_val};
+    *is_wtsp_eq = false;
+    if (!tok_val)
+        exit(1);
+    printf("%s\n", tok_val);
+    return (token) {tok_kind, f->filename, c_buf->cread_p->line, c_buf->cread_p->col, tok_val};
 }

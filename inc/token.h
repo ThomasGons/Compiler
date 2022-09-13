@@ -4,8 +4,43 @@
 #include "main.h"
 #include "symbol_tb.h"
 
+#define CIRC_BUF_LEN 8
 #define PUNC_SIZE 48
 #define KW_SIZE 32
+
+#define IS_WHITESPACE(c) ((isspace(c) || (c) == '\a' || (c) == '\b') ? true: false)
+
+#define INSUFFICIENT_SPACE_PEEK(f, c_buf, np_bytes) {                         \
+    if ((size_t) CIRC_BUF_LEN - (c_buf->cread_p - c_buf->cnt) < np_bytes)     \
+        peek(f, c_buf);                                                       \
+}
+#define CREAD_P_FORWARD(f, c_buf) {                              \
+    if (c_buf->cread_p - c_buf->cnt == CIRC_BUF_LEN)             \
+        fill_circ_buffer(f, c_buf, 0);                           \
+    else                                                         \
+        c_buf->cread_p++;                                        \
+}          
+#define UNDEFINED_SIZE_TOK(f, c_buf, buf, tmp, len) {            \
+    if (tmp - c_buf->cnt == CIRC_BUF_LEN - 1) {                  \
+        buf = fill_buffer(f, c_buf, buf, len + 1);               \
+        tmp = c_buf->cnt;                                        \
+        len = 0;                                                 \
+    } else {                                                     \
+        tmp++;                                                   \
+        len++;                                                   \
+    }                                                            \
+}                                                                \
+
+
+typedef struct {
+    char c;
+    unsigned line, col;
+} circ_buf_d;
+
+typedef struct {
+    circ_buf_d *cread_p;
+    circ_buf_d *cnt;
+} circ_buf;
 
 typedef enum {
     WARN, ERR
@@ -17,10 +52,10 @@ typedef enum {
     TK_LIT,     // literal
     TK_NB,      // number
     TK_PUNC,    // punctuator (includes operators)
-} token_lbl;
+} token_kind;
 
 typedef struct {
-    token_lbl tok;
+    token_kind tok;
     // useful in error handling
     char* filename;
     unsigned line, col;
@@ -28,10 +63,16 @@ typedef struct {
 } token;
 
 typedef struct {
-    char* filename;
-    char* cnt;           
+    FILE *sf;
+    char* filename;           
     // position in the file's content (cnt) described with line and column 
     unsigned line, col;  
+} file_d;
+
+typedef struct {
+    char *filename;
+    char *cnt;
+    unsigned line, col;
 } str_file;
 
 // all punctuators in C arranged in descending length
@@ -60,17 +101,25 @@ char *kw[] = {
     "void", "volatile", "while"
 };
 
-static str_file read_file(char*);
-static void error_tok(str_file, err_kind, char*);
-static char *err_line(str_file);
-static void skip_whitespace(str_file*);
-static char *str_copy(str_file*, unsigned, bool);
-static char *number(str_file*);
-static char *literal(str_file*);
-static char *escape_char(str_file *);
-static char *punctuator(str_file*);
-static char *identifier(str_file*);
-static bool keyword(char*);
-extern token tokenize(str_file*, symb_tb[]);
+
+circ_buf init_circ_buffer();
+void fill_circ_buffer(file_d*, circ_buf*, uint8_t);
+circ_buf_d skip_whitespace(file_d*, bool);
+void len_skipped(file_d*, char);
+void peek(file_d*, circ_buf*);
+void circ_buf_display_cnt(circ_buf_d*, unsigned);
+
+// static void error_tok(str_file, err_kind, char*);
+// static char *err_line(str_file);
+
+bool compounded_strcmp(circ_buf_d*, char*);
+char *str_copy(file_d*, circ_buf*, unsigned);
+char *number(file_d*, circ_buf*, bool);
+char *literal(file_d*, circ_buf*);
+char *escape_char(file_d*, circ_buf_d*);
+char *punctuator(file_d*, circ_buf*);
+char *identifier(file_d*, circ_buf*);
+bool keyword(char*);
+token tokenize(file_d*, circ_buf*, symb_tb[], bool*);
 
 #endif
