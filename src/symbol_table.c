@@ -1,4 +1,4 @@
-#include "../inc/symbol_tb.h"
+#include "symbol_tb.h"
 
 unsigned hash_djb2(char *s) {
     unsigned long hs = 5381, i;

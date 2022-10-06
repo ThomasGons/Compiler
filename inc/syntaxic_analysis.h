@@ -1,14 +1,16 @@
-#ifndef __PARSE_H__
-#define __PARSE_H__
+#ifndef __SYNTAXIC_ANALYSIS_H__
+#define __SYNTAXIC_ANALYSIS_H__
 
 #include "main.h"
+#include "lexical_analysis.h"
 #include "token.h"
+#include "symbol_tb.h"
 
 // binary expression tree to parse condition, arithmetic or binary expressions
 
 typedef struct bin_expr_node{
     union {
-        token_val operator;
+        token_lbl operator;
         char *identifier;
         void *value;
     };
@@ -22,7 +24,7 @@ typedef struct {
     char *qualifier;  // type qualifier: const, volatile and restrict
     char *type;       // int, float, char, pointer and compound types 
     char *identifier;
-    void *value;      // void pointer to cast later;
+    char *value;      // void pointer to cast later;
 } decl;
 
 typedef struct param {
@@ -99,8 +101,8 @@ typedef union {
 } stmt;
 
 
-/* The parser will create an AST (Abstract Syntax Tree) for each function
-as gcc does. AST is an n ary tree represented as follows */
+/* The parser will create a parse tree (Abstract Syntax Tree) for each function
+as gcc does. parse tree is an n ary tree represented as follows */
 
 typedef struct ast_node {
     char *label;
@@ -112,15 +114,23 @@ typedef struct ast_node {
         };
     };
     struct ast_node *sibling;
-} ast_node, *ast;
+} parse_t_node, *parse_t;
 
-// Add-on for the AST a kind of root that describes the function itself as a prototype.
+// Add-on for the parse tree a kind of root that describes the function itself as a prototype.
 
 typedef struct {
     param_list inputs;
     param output;
-    ast body;
-} ast_node_root, *ast_root;
+    parse_t body;
+} parse_t_node_root, *parse_t_root;
 
+
+extern token tok;
+extern str_file sf;
+extern symb_tb sb_t[BUCKET_SIZE];
+
+
+bool in_array(char*[], uint8_t);
+decl *declaration();
 
 #endif
